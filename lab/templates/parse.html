@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Parse</title>
+</head>
+<body>
+    <form method="post">
+        <input name="url_text" id="new_url" placeholder="Enter a url to parse"/>
+        {% csrf_token %}
+    </form>
+    <p>
+        {{ new_url }}
+    </p>
+</body>
+</html>

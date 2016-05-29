@@ -21,4 +21,5 @@ import lab.views
 urlpatterns = [
     url(r'^$', lab.views.home_page, name='home'),
     url(r'^admin/', admin.site.urls),
+    url(r'^parse/', lab.views.parse, name='parse')
 ]

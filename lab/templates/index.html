@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Hello World!!!</title>
+</head>
+<body>
+    <h1>
+        Enter Url
+    </h1>
+    <form method="post">
+        <input name="item_text" id="id_new_item" placeholder="Enter a to-do item"/>
+        {% csrf_token %}
+    </form>
+    <p>
+        Url was: {{ url }}
+    </p>
+    <table id="id_list_table">
+        {% for link in links %}
+            <tr>
+                <td>
+                    {{ link }}
+                </td>
+
+            </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
