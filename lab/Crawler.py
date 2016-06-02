@@ -1,5 +1,5 @@
 from itertools import repeat
-from multiprocessing.pool import Pool
+from multiprocessing import Pool
 from urllib import robotparser
 from urllib.parse import urlsplit, urljoin, urlparse
 
@@ -70,9 +70,8 @@ class Crawler:
         temp_links = set()
         with Pool(processes=4) as pool:
             # pool_map = pool.map(Crawler, links)
-            pool_map = pool.starmap(Crawler, zip(links, repeat(self.depth - 1)))
+            pool_map = pool.starmap(Crawler.crawl, zip(links, repeat(self.depth - 1)))
             for i in pool_map:
-                i.crawl()
                 temp_links.update(i.get_links())
 
 
@@ -82,7 +81,8 @@ class Crawler:
 
         return links
 
-    def crawl(self):
+    def crawl(self, start_url, depth):
+        self.__init__(start_url, depth)
         self.links = self.get_all_links_from_url(self.start_url)
 
     def get_links(self):
