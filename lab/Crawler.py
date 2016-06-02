@@ -1,3 +1,4 @@
+from multiprocessing import Process
 from urllib import robotparser
 from urllib.parse import urlsplit, urljoin, urlparse
 
@@ -12,6 +13,7 @@ class Crawler:
         self.start_url_parse = urlparse(self.start_url)
         self.depth = depth
         self.get_robots()
+        self.links = set()
         print('start url: {} \ndepth = {}'.format(self.start_url, self.depth))
 
     def get_robots(self):
@@ -40,6 +42,8 @@ class Crawler:
         url = urlsplit(url).geturl()
         if url == b'':
             return ''
+        if url.startswith('mailto:'):
+            return ''
         if url.find('#') != -1:
             url = url[:url.find('#')]
         if url.find('?') != -1:
@@ -48,30 +52,38 @@ class Crawler:
             url = url[:-1]
         return url
 
-    def get_links(self, url, html):
+    def get_links_on_page(self, url, html):
         bs = BeautifulSoup(html, 'lxml')
         links = set()
         for link in bs.find_all('a'):
-            links.add(urljoin(url, self.clear_url(link.get('href'))))
+            if link.get('href') != self.start_url:
+                links.add(urljoin(url, self.clear_url(link.get('href'))))
         return links
 
-    def get_links_from_url(self, url):
-        if url is not None:
-            return self.get_links(url, self.download_url(url))
-
     def get_all_links_from_url(self, url, depth=1):
-        links = self.get_links(url, self.download_url(url))
+        links = self.get_links_on_page(url, self.download_url(url))
 
         if depth < 2:
             return links
 
         temp_links = set()
         for link in links:
-            temp_links.update(self.get_all_links_from_url(link, depth=depth - 1))
+            # temp_links.update(self.get_all_links_from_url(link, depth=depth - 1))
+            temp_crawler = Crawler(link, depth=depth - 1)
+            p = Process(target=temp_crawler.crawl())
+            p.start()
+            p.join()
+            temp_links.update(temp_crawler.get_links())
+
 
         links.update(temp_links)
+        if self.start_url in self.links:
+            links.remove(self.start_url)
 
         return links
 
     def crawl(self):
-        return self.get_all_links_from_url(self.start_url, depth=self.depth)
+        self.links = self.get_all_links_from_url(self.start_url, depth=self.depth)
+
+    def get_links(self):
+        return self.links
