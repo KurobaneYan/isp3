@@ -1,4 +1,5 @@
-from multiprocessing import Process
+from itertools import repeat
+from multiprocessing.pool import Pool
 from urllib import robotparser
 from urllib.parse import urlsplit, urljoin, urlparse
 
@@ -7,7 +8,7 @@ from bs4 import BeautifulSoup
 
 
 class Crawler:
-    def __init__(self, start_url, depth=1):
+    def __init__(self, start_url, depth):
         self.robot_parser = robotparser.RobotFileParser()
         self.start_url = start_url
         self.start_url_parse = urlparse(self.start_url)
@@ -60,20 +61,19 @@ class Crawler:
                 links.add(urljoin(url, self.clear_url(link.get('href'))))
         return links
 
-    def get_all_links_from_url(self, url, depth=1):
+    def get_all_links_from_url(self, url):
         links = self.get_links_on_page(url, self.download_url(url))
 
-        if depth < 2:
+        if self.depth < 2:
             return links
 
         temp_links = set()
-        for link in links:
-            # temp_links.update(self.get_all_links_from_url(link, depth=depth - 1))
-            temp_crawler = Crawler(link, depth=depth - 1)
-            p = Process(target=temp_crawler.crawl())
-            p.start()
-            p.join()
-            temp_links.update(temp_crawler.get_links())
+        with Pool(processes=4) as pool:
+            # pool_map = pool.map(Crawler, links)
+            pool_map = pool.starmap(Crawler, zip(links, repeat(self.depth - 1)))
+            for i in pool_map:
+                i.crawl()
+                temp_links.update(i.get_links())
 
 
         links.update(temp_links)
@@ -83,7 +83,7 @@ class Crawler:
         return links
 
     def crawl(self):
-        self.links = self.get_all_links_from_url(self.start_url, depth=self.depth)
+        self.links = self.get_all_links_from_url(self.start_url)
 
     def get_links(self):
         return self.links

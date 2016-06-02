@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Pool</title>
+</head>
+<body>
+    <form method="post">
+        <input name="first_url" id="url1" placeholder="Enter url1"/>
+        <br>
+        <input name="second_url" id="url2" placeholder="Enter url2"/>
+        <br>
+        <input name="depth" id="depth" placeholder="Enter depth">
+        <br>
+        <input type="submit" value="Submit" />
+        {% csrf_token %}
+    </form>
+    <p>
+        {{ url_1 }}
+    </p>
+    <p>
+        {{ url_2 }}
+    </p>
+    <table id="url_list">
+        {% for url in urls %}
+            <tr>
+                <td>
+                    {{ url }}
+                </td>
+            </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
