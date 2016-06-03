@@ -1,4 +1,3 @@
-from itertools import repeat
 from multiprocessing import Pool
 from urllib import robotparser
 from urllib.parse import urlsplit, urljoin, urlparse
@@ -9,23 +8,25 @@ from bs4 import BeautifulSoup
 
 class Crawler:
     def __init__(self, start_url, depth):
-        self.robot_parser = robotparser.RobotFileParser()
         self.start_url = start_url
-        self.start_url_parse = urlparse(self.start_url)
         self.depth = depth
-        self.get_robots()
+        self.get_robots(start_url)
         self.links = set()
         print('start url: {} \ndepth = {}'.format(self.start_url, self.depth))
 
-    def get_robots(self):
-        robots_url = urljoin(self.start_url_parse.scheme + '://' + self.start_url_parse.netloc + '/', 'robots.txt')
+    def get_robots(self, url):
+        start_url_parse = urlparse(url)
+        robot_parser = robotparser.RobotFileParser()
+        robots_url = urljoin(start_url_parse.scheme + '://' + start_url_parse.netloc + '/', 'robots.txt')
         print('robots.txt url is: {}'.format(robots_url))
-        self.robot_parser.set_url(robots_url)
-        self.robot_parser.read()
+        robot_parser.set_url(robots_url)
+        robot_parser.read()
+        return robot_parser
 
     def download_url(self, url):
         if url is not None:
-            if self.robot_parser.can_fetch('*', url):
+            robot_parser = self.get_robots(url)
+            if robot_parser.can_fetch('*', url):
                 headers = {
                     'User-Agent': 'SearchBotByMe v0.1',
                 }
@@ -53,7 +54,7 @@ class Crawler:
             url = url[:-1]
         return url
 
-    def get_links_on_page(self, url, html):
+    def get_links_from_url(self, url, html):
         bs = BeautifulSoup(html, 'lxml')
         links = set()
         for link in bs.find_all('a'):
@@ -61,8 +62,11 @@ class Crawler:
                 links.add(urljoin(url, self.clear_url(link.get('href'))))
         return links
 
+    def get_links_on_page(self, url):
+        return self.get_links_from_url(url, self.download_url(url))
+
     def get_all_links_from_url(self, url):
-        links = self.get_links_on_page(url, self.download_url(url))
+        links = self.get_links_on_page(url)
 
         if self.depth < 2:
             return links
@@ -70,10 +74,14 @@ class Crawler:
         temp_links = set()
         with Pool(processes=4) as pool:
             # pool_map = pool.map(Crawler, links)
-            pool_map = pool.starmap(Crawler.crawl, zip(links, repeat(self.depth - 1)))
+            # pool_map = pool.starmap(Crawler, zip(links, repeat(self.depth - 1)))
+            # for i in pool_map:
+            #     i.crawl()
+            #     temp_links.update(i.get_links())
+            pool_map = pool.map(self.get_links_on_page, links)
             for i in pool_map:
-                temp_links.update(i.get_links())
-
+                print(i)
+                links.update(i)
 
         links.update(temp_links)
         if self.start_url in self.links:
@@ -81,8 +89,7 @@ class Crawler:
 
         return links
 
-    def crawl(self, start_url, depth):
-        self.__init__(start_url, depth)
+    def crawl(self):
         self.links = self.get_all_links_from_url(self.start_url)
 
     def get_links(self):

@@ -1,7 +1,5 @@
 import urllib.request
 import urllib.robotparser
-from itertools import repeat
-from multiprocessing import Pool
 from multiprocessing import Process
 from urllib.parse import urljoin
 
@@ -49,14 +47,18 @@ def pool(request):
         depth = 1
     else:
         depth = int(depth)
-    if first_url is not None and second_url is not None:
-        with Pool(processes=2) as pool:
-            pool_map = pool.starmap(lab.Crawler.Crawler, zip([first_url, second_url], repeat(depth)))
-            print(pool_map)
-            print(type(pool_map))
-            for i in pool_map:
-                i.crawl()
-                urls.update(i.get_links())
+    # if first_url is not None and second_url is not None:
+    #     with Pool(processes=2) as pool:
+    #         pool_map = pool.starmap(lab.Crawler.Crawler, zip([first_url, second_url], repeat(depth)))
+    #         print(pool_map)
+    #         print(type(pool_map))
+    #         for i in pool_map:
+    #             i.crawl()
+    #             urls.update(i.get_links())
+    if first_url is not None:
+        crawler = lab.Crawler.Crawler(first_url, depth)
+        crawler.crawl()
+        urls.update(crawler.get_links())
 
     print('Len: {}'.format(len(urls)))
     return render(request, 'pool.html', {
