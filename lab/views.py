@@ -1,6 +1,6 @@
+import re
 import urllib.request
 import urllib.robotparser
-from multiprocessing import Process
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
@@ -13,25 +13,33 @@ def home_page(request):
     post_result = request.POST
     url = post_result.get('item_text')
 
+    # if url is not None:
+    #     crawler = lab.Crawler.Crawler(url, depth=2)
+    #     p = Process(target=crawler.crawl())
+    #     p.start()
+    #     p.join()
+    #     links = crawler.get_links()
+    #     if crawler.start_url in links:
+    #         print('Faund start url!')
+    # else:
+    #     links = set()
+
+    temp = None
     if url is not None:
-        crawler = lab.Crawler.Crawler(url, depth=2)
-        p = Process(target=crawler.crawl())
-        p.start()
-        p.join()
-        links = crawler.get_links()
-        if crawler.start_url in links:
-            print('Faund start url!')
-    else:
-        links = set()
+        crawler = lab.Crawler.Crawler(url, 1)
+        temp = crawler.process_url(url)
+        bs = BeautifulSoup(temp[1], 'lxml')
+        temp[1] = bs.get_text()
+        temp[1] = re.sub(r'[^A-Z a-z0-9]', ' ', temp[1])
+
+    if url is not None:
+        url = re.sub(r'[^A-Za-z]', ' ', url)
 
     return render(request, 'index.html', {
-        'url': request.POST.get('item_text', ''),
+        'url': temp,
+        # 'url': request.POST.get('item_text', ''),
         #'links': links,
     })
-
-
-def f(x):
-    return x * x
 
 
 def pool(request):
@@ -42,29 +50,35 @@ def pool(request):
     print(first_url)
     print(second_url)
     print(depth)
-    urls = set()
+    text = ''
+    urls = []
     if depth is None:
         depth = 1
     else:
         depth = int(depth)
-    # if first_url is not None and second_url is not None:
-    #     with Pool(processes=2) as pool:
-    #         pool_map = pool.starmap(lab.Crawler.Crawler, zip([first_url, second_url], repeat(depth)))
-    #         print(pool_map)
-    #         print(type(pool_map))
-    #         for i in pool_map:
-    #             i.crawl()
-    #             urls.update(i.get_links())
+
     if first_url is not None:
-        crawler = lab.Crawler.Crawler(first_url, depth)
-        crawler.crawl()
-        urls.update(crawler.get_links())
+        crawler = lab.Crawler.Crawler(first_url, 1)
+        urls = crawler.get_all_links_from_url(first_url)
+
+        # html = crawler.download_url(first_url)
+        #
+        # soup = BeautifulSoup(html, 'lxml')
+        #
+        # for script in soup(['script', 'style']):
+        #     script.extract()
+        #
+        # text = soup.get_text()
+        #
+        # lines = (line.strip() for line in text.splitlines())
+        # chunks = (phrase.strip() for line in lines for phrase in line.split(' '))
+        # text = '\n'.join(chunk for chunk in chunks if chunk)
 
     print('Len: {}'.format(len(urls)))
     return render(request, 'pool.html', {
-        'url_1': first_url,
-        'url_2': second_url,
+        'url': first_url,
         'urls': urls,
+        'text': text,
     })
 
 

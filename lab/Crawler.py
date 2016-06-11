@@ -1,4 +1,4 @@
-from multiprocessing import Pool
+from time import sleep
 from urllib import robotparser
 from urllib.parse import urlsplit, urljoin, urlparse
 
@@ -10,7 +10,6 @@ class Crawler:
     def __init__(self, start_url, depth):
         self.start_url = start_url
         self.depth = depth
-        self.get_robots(start_url)
         self.links = set()
         print('start url: {} \ndepth = {}'.format(self.start_url, self.depth))
 
@@ -24,20 +23,18 @@ class Crawler:
         return robot_parser
 
     def download_url(self, url):
+        sleep(0.005)
         if url is not None:
+            url = self.clear_url(url)
             robot_parser = self.get_robots(url)
             if robot_parser.can_fetch('*', url):
                 headers = {
-                    'User-Agent': 'SearchBotByMe v0.1',
+                    'User-Agent': 'SearchBotByMe v0.1.1',
                 }
-                url = self.clear_url(url)
                 r = requests.get(url, headers=headers)
                 if r.status_code != 200:
-                    # raise Exception('Status code not 200!, it was: {}'.format(r.status_code))
                     print('{} status code was {}'.format(r.url, r.status_code))
                 return r.text
-            return ''
-        return ''
 
     @staticmethod
     def clear_url(url):
@@ -54,43 +51,55 @@ class Crawler:
             url = url[:-1]
         return url
 
-    def get_links_from_url(self, url, html):
+    def prepare_soap(self, html):
         bs = BeautifulSoup(html, 'lxml')
+        return bs
+
+    def soap_links(self, url, soup):
         links = set()
-        for link in bs.find_all('a'):
+        for link in soup.find_all('a'):
             if link.get('href') != self.start_url:
                 links.add(urljoin(url, self.clear_url(link.get('href'))))
+        links.remove(url)
         return links
 
-    def get_links_on_page(self, url):
-        return self.get_links_from_url(url, self.download_url(url))
+    def index(self, soup):
+        for script in soup(['script', 'style']):
+            script.extract()
+
+        text = soup.get_text()
+
+        lines = list(line.strip() for line in text.splitlines())
+        chunks = list(phrase.strip(' «».,;:—↓↑→←*/"?()<>{}[]') for line in lines for phrase in line.split(' '))
+        text = list(chunk for chunk in chunks if chunk)
+        print(text)
+
+
+    def process_url(self, url):
+        html = self.download_url(url)
+        soup = self.prepare_soap(html)
+
+        links = self.soap_links(url, soup)
+
+        # index the soup
+        self.index(soup)
+
+        return links
 
     def get_all_links_from_url(self, url):
-        links = self.get_links_on_page(url)
+        links = self.process_url(url)
 
         if self.depth < 2:
             return links
 
-        temp_links = set()
-        with Pool(processes=4) as pool:
-            # pool_map = pool.map(Crawler, links)
-            # pool_map = pool.starmap(Crawler, zip(links, repeat(self.depth - 1)))
-            # for i in pool_map:
-            #     i.crawl()
-            #     temp_links.update(i.get_links())
-            pool_map = pool.map(self.get_links_on_page, links)
-            for i in pool_map:
-                print(i)
-                links.update(i)
-
-        links.update(temp_links)
-        if self.start_url in self.links:
-            links.remove(self.start_url)
+        # temp_links = set()
+        # with Pool(processes=4) as pool:
+        #     # pool_map = pool.map(Crawler, index_pairs)
+        #     # pool_map = pool.starmap(Crawler, zip(index_pairs, repeat(self.depth - 1)))
+        #     # for i in pool_map:
+        #     #     i.crawl()
+        #     #     temp_links.update(i.get_links())
+        #     pool_map = pool.map(self.process_url, index_pairs)
+        #     print(len(pool_map))
 
         return links
-
-    def crawl(self):
-        self.links = self.get_all_links_from_url(self.start_url)
-
-    def get_links(self):
-        return self.links
