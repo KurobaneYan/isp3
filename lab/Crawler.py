@@ -1,3 +1,5 @@
+from collections import Counter
+from multiprocessing.pool import Pool
 from time import sleep
 from urllib import robotparser
 from urllib.parse import urlsplit, urljoin, urlparse
@@ -5,12 +7,17 @@ from urllib.parse import urlsplit, urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
+from lab.models import Url, Word, UrlIndex
+
 
 class Crawler:
-    def __init__(self, start_url, depth):
-        self.start_url = start_url
+    def __init__(self, start_url, depth=1, width=10, workers=4):
+        self.start_url = self.clear_url(start_url)
         self.depth = depth
+        self.width = width
+        self.workers = workers
         self.links = set()
+        self.processed_links = set()
         print('start url: {} \ndepth = {}'.format(self.start_url, self.depth))
 
     def get_robots(self, url):
@@ -49,7 +56,7 @@ class Crawler:
             url = url[:url.find('?')]
         if len(url) > 0 and url[-1] == '/':
             url = url[:-1]
-        return url
+        return url.replace('https', 'http')
 
     def prepare_soap(self, html):
         bs = BeautifulSoup(html, 'lxml')
@@ -58,48 +65,95 @@ class Crawler:
     def soap_links(self, url, soup):
         links = set()
         for link in soup.find_all('a'):
-            if link.get('href') != self.start_url:
-                links.add(urljoin(url, self.clear_url(link.get('href'))))
-        links.remove(url)
+            if link.get('href') not in self.processed_links:
+                if len(links) < self.width:
+                    if link.get('href') != self.start_url:
+                        links.add(urljoin(url, self.clear_url(link.get('href'))))
+
         return links
 
-    def index(self, soup):
+    def index(self, url, soup):
+        new_url = False
+
         for script in soup(['script', 'style']):
             script.extract()
 
         text = soup.get_text()
 
         lines = list(line.strip() for line in text.splitlines())
-        chunks = list(phrase.strip(' «».,;:—↓↑→←*/"?()<>{}[]') for line in lines for phrase in line.split(' '))
+        chunks = list(phrase.strip(' «».,;:—↓↑→←*/"?()<>{}[]|') for line in lines for phrase in line.split(' '))
         text = list(chunk for chunk in chunks if chunk)
-        print(text)
 
+        words_count = len(text)
+        word_occurrences = dict(Counter(text))
+
+        existed_words = Word.objects.filter(word__in=list(word_occurrences.keys()))
+        new_words = set(word_occurrences.keys()).difference_update(set(existed_words))
+        print(new_words)
+
+        try:
+            model_url = Url.objects.get(url=url)
+            model_url.words_count = words_count
+            model_url.save()
+        except Url.DoesNotExist:
+            model_url = Url(url=url, words_count=words_count)
+            model_url.save()
+            new_url = True
+
+        model_words = []
+        model_url_indexes = []
+        for w in new_words:
+            word = Word(word=w)
+            model_words.append(word)
+            model_url_indexes.append(UrlIndex(url=model_url, word=word, count=word_occurrences[w]))
+
+        Word.objects.bulk_create(model_words)
+        UrlIndex.objects.bulk_create(model_url_indexes)
+
+        if new_url:
+            model_extra_url_indexes = []
+            for w in existed_words:
+                model_extra_url_indexes.append(UrlIndex(url=model_url, word=w, count=word_occurrences[w.word]))
+            UrlIndex.objects.bulk_create(model_extra_url_indexes)
+
+        existed_url_indexes = UrlIndex.objects.filter(word__in=existed_words, url=model_url)
+        for ui in existed_url_indexes:
+            ui.count = word_occurrences[ui.word.word]
+            ui.save()
 
     def process_url(self, url):
-        html = self.download_url(url)
-        soup = self.prepare_soap(html)
+        if url is not None:
+            html = self.download_url(url)
+            soup = self.prepare_soap(html)
 
-        links = self.soap_links(url, soup)
+            links = self.soap_links(url, soup)
 
-        # index the soup
-        self.index(soup)
+            # index the soup
+            self.index(url, soup)
+            # print('indexing {}'.format(url))
 
-        return links
+            return links
 
-    def get_all_links_from_url(self, url):
-        links = self.process_url(url)
+    def crawl(self):
+        links = self.process_url(self.start_url)
 
         if self.depth < 2:
             return links
 
-        # temp_links = set()
-        # with Pool(processes=4) as pool:
-        #     # pool_map = pool.map(Crawler, index_pairs)
-        #     # pool_map = pool.starmap(Crawler, zip(index_pairs, repeat(self.depth - 1)))
-        #     # for i in pool_map:
-        #     #     i.crawl()
-        #     #     temp_links.update(i.get_links())
-        #     pool_map = pool.map(self.process_url, index_pairs)
-        #     print(len(pool_map))
+
+        while self.depth > 0:
+            print(links)
+            print(self.depth)
+            with Pool(self.workers) as pool:
+                pool_map = pool.map(self.process_url, links)
+
+            self.processed_links.update(links)
+
+            links.clear()
+
+            for i in pool_map:
+                links.update(i)
+
+            self.depth -= 1
 
         return links
