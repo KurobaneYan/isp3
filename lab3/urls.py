@@ -21,6 +21,5 @@ import lab.views
 urlpatterns = [
     url(r'^$', lab.views.home_page, name='home'),
     url(r'^admin/', admin.site.urls),
-    url(r'^parse/', lab.views.parse, name='parse'),
-    url(r'^pool/', lab.views.pool, name='pool'),
+    url(r'^add/', lab.views.add, name='add'),
 ]

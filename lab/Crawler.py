@@ -6,6 +6,7 @@ from urllib.parse import urlsplit, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
+from django.db import transaction
 
 from lab.models import Url, Word, UrlIndex
 
@@ -18,7 +19,6 @@ class Crawler:
         self.workers = workers
         self.links = set()
         self.processed_links = set()
-        print('start url: {} \ndepth = {}'.format(self.start_url, self.depth))
 
     def get_robots(self, url):
         start_url_parse = urlparse(url)
@@ -30,7 +30,7 @@ class Crawler:
         return robot_parser
 
     def download_url(self, url):
-        sleep(0.005)
+        sleep(0.02)
         if url is not None:
             url = self.clear_url(url)
             robot_parser = self.get_robots(url)
@@ -50,6 +50,8 @@ class Crawler:
             return ''
         if url.startswith('mailto:'):
             return ''
+        if url.startswith('irc:'):
+            return ''
         if url.find('#') != -1:
             url = url[:url.find('#')]
         if url.find('?') != -1:
@@ -59,22 +61,22 @@ class Crawler:
         return url.replace('https', 'http')
 
     def prepare_soap(self, html):
-        bs = BeautifulSoup(html, 'lxml')
-        return bs
+        if html is not None:
+            bs = BeautifulSoup(html, 'lxml')
+            return bs
 
     def soap_links(self, url, soup):
-        links = set()
-        for link in soup.find_all('a'):
-            if link.get('href') not in self.processed_links:
-                if len(links) < self.width:
-                    if link.get('href') != self.start_url:
+        if soup is not None:
+            links = set()
+            for link in soup.find_all('a'):
+                if urljoin(url, self.clear_url(link.get('href'))) not in self.processed_links:
+                    if len(links) < self.width:
+                        # print(urljoin(url, self.clear_url(link.get('href'))))
                         links.add(urljoin(url, self.clear_url(link.get('href'))))
+            return links
 
-        return links
-
+    @transaction.atomic
     def index(self, url, soup):
-        new_url = False
-
         for script in soup(['script', 'style']):
             script.extract()
 
@@ -84,42 +86,24 @@ class Crawler:
         chunks = list(phrase.strip(' «».,;:—↓↑→←*/"?()<>{}[]|') for line in lines for phrase in line.split(' '))
         text = list(chunk for chunk in chunks if chunk)
 
-        words_count = len(text)
-        word_occurrences = dict(Counter(text))
+        url_model, is_created = Url.objects.get_or_create(url=url)
+        url_model.urlindex_set.all().delete() # ???
 
-        existed_words = Word.objects.filter(word__in=list(word_occurrences.keys()))
-        new_words = set(word_occurrences.keys()).difference_update(set(existed_words))
-        print(new_words)
+        counter_dict = Counter(text)
 
-        try:
-            model_url = Url.objects.get(url=url)
-            model_url.words_count = words_count
-            model_url.save()
-        except Url.DoesNotExist:
-            model_url = Url(url=url, words_count=words_count)
-            model_url.save()
-            new_url = True
+        url_model.words_count = sum(counter_dict.values())
 
-        model_words = []
-        model_url_indexes = []
-        for w in new_words:
-            word = Word(word=w)
-            model_words.append(word)
-            model_url_indexes.append(UrlIndex(url=model_url, word=word, count=word_occurrences[w]))
+        all_words_to_add = set(counter_dict.keys())
+        words_in_db = set(
+            Word.objects.filter(word__in=counter_dict.keys()).values_list('word', flat=True)
+        )
+        words_to_create = all_words_to_add - words_in_db
 
-        Word.objects.bulk_create(model_words)
-        UrlIndex.objects.bulk_create(model_url_indexes)
-
-        if new_url:
-            model_extra_url_indexes = []
-            for w in existed_words:
-                model_extra_url_indexes.append(UrlIndex(url=model_url, word=w, count=word_occurrences[w.word]))
-            UrlIndex.objects.bulk_create(model_extra_url_indexes)
-
-        existed_url_indexes = UrlIndex.objects.filter(word__in=existed_words, url=model_url)
-        for ui in existed_url_indexes:
-            ui.count = word_occurrences[ui.word.word]
-            ui.save()
+        url_model.save()
+        Word.objects.bulk_create(Word(word=word) for word in words_to_create)
+        indices = (UrlIndex(url=url_model, count=count, word=Word.objects.get(word=word))
+                   for word, count in counter_dict.items())
+        UrlIndex.objects.bulk_create(indices)
 
     def process_url(self, url):
         if url is not None:
@@ -128,32 +112,43 @@ class Crawler:
 
             links = self.soap_links(url, soup)
 
-            # index the soup
             self.index(url, soup)
-            # print('indexing {}'.format(url))
 
             return links
 
     def crawl(self):
         links = self.process_url(self.start_url)
+        self.processed_links.add(self.clear_url(self.start_url))
+        links = links - self.processed_links
+
+        print('F {} links {}'.format(len(links), links))
+        print('F {} processed links {}'.format(len(self.processed_links), self.processed_links))
 
         if self.depth < 2:
             return links
 
-
-        while self.depth > 0:
-            print(links)
-            print(self.depth)
+        while self.depth > 1:
+            print('{} links {}'.format(len(links), links))
+            print('{} processed links {}'.format(len(self.processed_links), self.processed_links))
             with Pool(self.workers) as pool:
                 pool_map = pool.map(self.process_url, links)
 
-            self.processed_links.update(links)
+            self.processed_links = self.processed_links | links
 
             links.clear()
 
-            for i in pool_map:
-                links.update(i)
+            if pool_map is not None:
+                for i in pool_map:
+                    if i is not None:
+                        links = links | i
 
             self.depth -= 1
 
-        return links
+        print('R {} links {}'.format(len(links), links))
+        print('R {} processed links {}'.format(len(self.processed_links), self.processed_links))
+        print('B {} links {}'.format(len(links | self.processed_links), links | self.processed_links))
+
+        return links | self.processed_links
+
+    def __str__(self):
+        return 'start url {} \nwidth {} \ndepth {}'.format(self.start_url, self.width, self.depth)
