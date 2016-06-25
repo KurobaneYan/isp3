@@ -83,49 +83,53 @@ class Crawler:
             return links
 
     @transaction.atomic
-    def index(self, url, soup):
-        if soup is not None:
-            for script in soup(['script', 'style']):
-                script.extract()
+    def index(self, page):
+        if page is not None:
+            url = page[0]
+            html = page[1]
 
-            text = soup.get_text()
+            if html is not None and url is not None:
+                soup = self.prepare_soap(html)
+                links = self.soap_links(url, soup)
 
-            lines = list(line.strip() for line in text.splitlines())
-            chunks = list(phrase.strip(' «».,;:—↓↑→←*/"?()<>{}[]|') for line in lines for phrase in line.split(' '))
-            text = list(chunk for chunk in chunks if chunk)
+                for script in soup(['script', 'style']):
+                    script.extract()
 
-            url_model, is_created = Url.objects.get_or_create(url=url)
-            url_model.urlindex_set.all().delete() # ???
+                text = soup.get_text()
 
-            counter_dict = Counter(text)
+                lines = list(line.strip() for line in text.splitlines())
+                chunks = list(phrase.strip(' «».,;:—↓↑→←*/"?()<>{}[]|') for line in lines for phrase in line.split(' '))
+                text = list(chunk for chunk in chunks if chunk)
 
-            url_model.words_count = sum(counter_dict.values())
+                url_model, is_created = Url.objects.get_or_create(url=url)
+                url_model.urlindex_set.all().delete() # ???
 
-            all_words_to_add = set(counter_dict.keys())
-            words_in_db = set(
-                Word.objects.filter(word__in=counter_dict.keys()).values_list('word', flat=True)
-            )
-            words_to_create = all_words_to_add - words_in_db
+                counter_dict = Counter(text)
 
-            url_model.save()
-            Word.objects.bulk_create(Word(word=word) for word in words_to_create)
-            indices = (UrlIndex(url=url_model, count=count, word=Word.objects.get(word=word))
-                       for word, count in counter_dict.items())
-            UrlIndex.objects.bulk_create(indices)
+                url_model.words_count = sum(counter_dict.values())
+
+                all_words_to_add = set(counter_dict.keys())
+                words_in_db = set(
+                    Word.objects.filter(word__in=counter_dict.keys()).values_list('word', flat=True)
+                )
+                words_to_create = all_words_to_add - words_in_db
+
+                url_model.save()
+                Word.objects.bulk_create(Word(word=word) for word in words_to_create)
+                indices = (UrlIndex(url=url_model, count=count, word=Word.objects.get(word=word))
+                           for word, count in counter_dict.items())
+                UrlIndex.objects.bulk_create(indices)
+
+                return links
 
     def process_url(self, url):
         if url is not None:
             print('processing {}'.format(url))
-            html = self.download_url(url)
-            soup = self.prepare_soap(html)
-            links = self.soap_links(url, soup)
-
-            return [links, soup, url]
+            return [url, self.download_url(url)]
 
     def crawl(self):
         first_page = self.process_url(self.start_url)
-        links = first_page[0]
-        self.index(self.start_url, first_page[1])
+        links = self.index(first_page)
         self.processed_links.add(self.clear_url(self.start_url))
         links = links - self.processed_links
 
@@ -146,10 +150,9 @@ class Crawler:
             links.clear()
 
             if pool_map is not None:
-                for i in pool_map:
-                    if i is not None and i[0] is not None and i[1] is not None and i[2] is not None:
-                        self.index(i[2], i[1])
-                        links = links | i[0]
+                for page in pool_map:
+                    if page is not None and page[0] is not None and page[1] is not None:
+                        links = links | self.index(page)
 
             self.depth -= 1
 
