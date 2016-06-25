@@ -1,3 +1,4 @@
+import sys
 from collections import Counter
 from multiprocessing.pool import Pool
 from time import sleep
@@ -19,6 +20,7 @@ class Crawler:
         self.workers = workers
         self.links = set()
         self.processed_links = set()
+        sys.setrecursionlimit(10000) # hack to avoid 'maximum recursion depth exceeded'
 
     def get_robots(self, url):
         start_url_parse = urlparse(url)
@@ -52,6 +54,10 @@ class Crawler:
             return ''
         if url.startswith('irc:'):
             return ''
+        if url.startswith('javascript'):
+            return ''
+        if url.endswith('\n'):
+            url.replace('\n', '')
         if url.find('#') != -1:
             url = url[:url.find('#')]
         if url.find('?') != -1:
@@ -77,33 +83,34 @@ class Crawler:
 
     @transaction.atomic
     def index(self, url, soup):
-        for script in soup(['script', 'style']):
-            script.extract()
+        if soup is not None:
+            for script in soup(['script', 'style']):
+                script.extract()
 
-        text = soup.get_text()
+            text = soup.get_text()
 
-        lines = list(line.strip() for line in text.splitlines())
-        chunks = list(phrase.strip(' «».,;:—↓↑→←*/"?()<>{}[]|') for line in lines for phrase in line.split(' '))
-        text = list(chunk for chunk in chunks if chunk)
+            lines = list(line.strip() for line in text.splitlines())
+            chunks = list(phrase.strip(' «».,;:—↓↑→←*/"?()<>{}[]|') for line in lines for phrase in line.split(' '))
+            text = list(chunk for chunk in chunks if chunk)
 
-        url_model, is_created = Url.objects.get_or_create(url=url)
-        url_model.urlindex_set.all().delete() # ???
+            url_model, is_created = Url.objects.get_or_create(url=url)
+            url_model.urlindex_set.all().delete() # ???
 
-        counter_dict = Counter(text)
+            counter_dict = Counter(text)
 
-        url_model.words_count = sum(counter_dict.values())
+            url_model.words_count = sum(counter_dict.values())
 
-        all_words_to_add = set(counter_dict.keys())
-        words_in_db = set(
-            Word.objects.filter(word__in=counter_dict.keys()).values_list('word', flat=True)
-        )
-        words_to_create = all_words_to_add - words_in_db
+            all_words_to_add = set(counter_dict.keys())
+            words_in_db = set(
+                Word.objects.filter(word__in=counter_dict.keys()).values_list('word', flat=True)
+            )
+            words_to_create = all_words_to_add - words_in_db
 
-        url_model.save()
-        Word.objects.bulk_create(Word(word=word) for word in words_to_create)
-        indices = (UrlIndex(url=url_model, count=count, word=Word.objects.get(word=word))
-                   for word, count in counter_dict.items())
-        UrlIndex.objects.bulk_create(indices)
+            url_model.save()
+            Word.objects.bulk_create(Word(word=word) for word in words_to_create)
+            indices = (UrlIndex(url=url_model, count=count, word=Word.objects.get(word=word))
+                       for word, count in counter_dict.items())
+            UrlIndex.objects.bulk_create(indices)
 
     def process_url(self, url):
         if url is not None:
@@ -112,12 +119,10 @@ class Crawler:
 
             links = self.soap_links(url, soup)
 
-            self.index(url, soup)
-
-            return links
+            return [links, soup, url]
 
     def crawl(self):
-        links = self.process_url(self.start_url)
+        links = self.process_url(self.start_url)[0]
         self.processed_links.add(self.clear_url(self.start_url))
         links = links - self.processed_links
 
@@ -139,8 +144,9 @@ class Crawler:
 
             if pool_map is not None:
                 for i in pool_map:
-                    if i is not None:
-                        links = links | i
+                    if i is not None and i[0] is not None:
+                        self.index(i[2], i[1])
+                        links = links | i[0]
 
             self.depth -= 1
 
@@ -148,7 +154,7 @@ class Crawler:
         print('R {} processed links {}'.format(len(self.processed_links), self.processed_links))
         print('B {} links {}'.format(len(links | self.processed_links), links | self.processed_links))
 
-        return links | self.processed_links
+        return self.processed_links
 
     def __str__(self):
         return 'start url {} \nwidth {} \ndepth {}'.format(self.start_url, self.width, self.depth)

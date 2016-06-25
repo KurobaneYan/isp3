@@ -40,53 +40,47 @@
       <ul class="nav navbar-nav">
         <li><a href="http://127.0.0.1:8000/">Home</a></li>
         <li class="active"><a href="http://127.0.0.1:8000/add/">Add</a></li>
-        <li><a href="#">Contact</a></li>
-        <li class="dropdown">
-          <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Dropdown <span class="caret"></span></a>
-          <ul class="dropdown-menu">
-            <li><a href="#">Action</a></li>
-            <li><a href="#">Another action</a></li>
-            <li><a href="#">Something else here</a></li>
-            <li role="separator" class="divider"></li>
-            <li class="dropdown-header">Nav header</li>
-            <li><a href="#">Separated link</a></li>
-            <li><a href="#">One more separated link</a></li>
-          </ul>
-        </li>
       </ul>
     </div><!--/.nav-collapse -->
   </div>
 </nav>
 
-    <div class="container theme-showcase" role="main">
-
-    <h1>Pool</h1>
-
-    <form method="post">
-        <input name="url" id="url" placeholder="Enter url1"/>
-        <br>
-        <input name="width" id="width" placeholder="Enter width"/>
-        <br>
-        <input name="depth" id="depth" placeholder="Enter depth">
-        <br>
-        <input type="submit" value="Submit" />
-        {% csrf_token %}
-    </form>
-    <p>
-        {{ url }}
-    </p>
-    <table id="url_list">
-        {% for url in urls %}
-            <tr>
-                <td>
-                    {{ url }}
-                </td>
-            </tr>
-        {% endfor %}
-    </table>
-    <p>
-        {{ text }}
-    </p>
+<div class="container" role="main">
+    <div class="jumbotron">
+        <form method="post">
+            <input name="url" id="url" placeholder="Enter url1"/>
+            <br>
+            <input name="width" id="width" placeholder="Enter width"/>
+            <br>
+            <input name="depth" id="depth" placeholder="Enter depth">
+            <br>
+            <input type="submit" value="Submit" />
+            {% csrf_token %}
+        </form>
+    </div>
+    {% if url != None %}
+    <div class="row-fluid">
+        <div class="span12">
+            <p>
+                url was: {{ url }}
+            </p>
+            {% if url_list != none %}
+                <p>
+                    following urls was added:
+                </p>
+                <table id="url_list">
+                    {% for url in urls %}
+                        <tr>
+                            <td>
+                                {{ url }}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </table>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 </div>
 
 

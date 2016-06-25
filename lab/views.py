@@ -1,10 +1,27 @@
 from django.shortcuts import render
 
 import lab.Crawler
+from lab.models import Word, UrlIndex
 
 
 def home_page(request):
-    return render(request, 'index.html', {})
+    post_result = request.POST
+    search_query = post_result.get('query')
+    url_list = []
+
+    if search_query is not None:
+        words = search_query.split()
+
+        word_in_db = Word.objects.filter(word__in=words)
+        print(word_in_db)
+        url_indexes = UrlIndex.objects.filter(word__in=word_in_db).order_by('-count')
+        print(url_indexes)
+        url_list = [ui.url.url for ui in url_indexes]
+
+    return render(request, 'index.html', {
+        'url_list': url_list,
+    })
+
 
 
 def add(request):
@@ -12,7 +29,6 @@ def add(request):
     url = post_result.get('url')
     depth = post_result.get('depth')
     width = post_result.get('width')
-    text = ''
     urls = set()
 
     # print('{} is {}'.format(depth, type(depth)))
@@ -42,5 +58,4 @@ def add(request):
     return render(request, 'add.html', {
         'url': url,
         'urls': urls,
-        'text': text,
     })
