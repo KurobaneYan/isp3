@@ -1,4 +1,3 @@
-import sys
 from collections import Counter
 from multiprocessing.pool import Pool
 from time import sleep
@@ -20,16 +19,16 @@ class Crawler:
         self.workers = workers
         self.links = set()
         self.processed_links = set()
-        sys.setrecursionlimit(10000) # hack to avoid 'maximum recursion depth exceeded'
 
     def get_robots(self, url):
         if url is not None:
             start_url_parse = urlparse(url)
             robot_parser = robotparser.RobotFileParser()
             robots_url = urljoin(start_url_parse.scheme + '://' + start_url_parse.netloc + '/', 'robots.txt')
-            robot_parser.set_url(robots_url)
-            robot_parser.read()
-            return robot_parser
+            if robots_url != 'robots.txt':
+                robot_parser.set_url(robots_url)
+                robot_parser.read()
+                return robot_parser
 
     def download_url(self, url):
         sleep(0.02)
@@ -48,15 +47,17 @@ class Crawler:
 
     @staticmethod
     def clear_url(url):
+        bad_start = ['mailto:', 'irc:', 'javascript:', 'magnet:', 'git:', 'ftp:', 'steam:']
+        bad_ends = ['\n', '.iso', '.jpg', '.tar.bz2', '.tar.gz', '.git', '.sig', '.rar', '.zip']
         url = urlsplit(url).geturl()
         if url == b'':
-            return ''
-        if url.startswith('mailto:'):
-            return ''
-        if url.startswith('irc:'):
-            return ''
-        if url.startswith('javascript'):
-            return ''
+            return
+        for start in bad_start:
+            if url.startswith(start):
+                return
+        for end in bad_ends:
+            if url.endswith(end):
+                return
         if url.endswith('\n'):
             url.replace('\n', '')
         if url.find('#') != -1:
@@ -69,8 +70,7 @@ class Crawler:
 
     def prepare_soap(self, html):
         if html is not None:
-            bs = BeautifulSoup(html, 'html.parser')
-            return bs
+            return BeautifulSoup(html, 'html.parser')
 
     def soap_links(self, url, soup):
         if soup is not None:
@@ -78,7 +78,6 @@ class Crawler:
             for link in soup.find_all('a'):
                 if urljoin(url, self.clear_url(link.get('href'))) not in self.processed_links:
                     if len(links) < self.width:
-                        # print(urljoin(url, self.clear_url(link.get('href'))))
                         links.add(urljoin(url, self.clear_url(link.get('href'))))
             return links
 
@@ -102,7 +101,7 @@ class Crawler:
                 text = list(chunk for chunk in chunks if chunk)
 
                 url_model, is_created = Url.objects.get_or_create(url=url)
-                url_model.urlindex_set.all().delete() # ???
+                url_model.urlindex_set.all().delete()
 
                 counter_dict = Counter(text)
 
@@ -163,4 +162,6 @@ class Crawler:
         return self.processed_links
 
     def __str__(self):
-        return 'start url {} \nwidth {} \ndepth {}'.format(self.start_url, self.width, self.depth)
+        return 'start url {} \nwidth {} \ndepth {}\nworkers {}'.format(
+            self.start_url, self.width, self.depth, self.workers
+        )
