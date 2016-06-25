@@ -48,11 +48,13 @@
 <div class="container" role="main">
     <div class="jumbotron">
         <form method="post">
-            <input name="url" id="url" placeholder="Enter url1"/>
+            <input name="url" id="url" placeholder="Url"/>
             <br>
-            <input name="width" id="width" placeholder="Enter width"/>
+            <input name="width" id="width" placeholder="Width"/>
             <br>
-            <input name="depth" id="depth" placeholder="Enter depth">
+            <input name="depth" id="depth" placeholder="Depth">
+            <br>
+            <input name="workers" id="workers" placeholder="Workers">
             <br>
             <input type="submit" value="Submit" />
             {% csrf_token %}
@@ -64,20 +66,6 @@
             <p>
                 url was: {{ url }}
             </p>
-            {% if url_list != none %}
-                <p>
-                    following urls was added:
-                </p>
-                <table id="url_list">
-                    {% for url in urls %}
-                        <tr>
-                            <td>
-                                {{ url }}
-                            </td>
-                        </tr>
-                    {% endfor %}
-                </table>
-            {% endif %}
         </div>
     </div>
     {% endif %}

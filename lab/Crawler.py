@@ -23,27 +23,28 @@ class Crawler:
         sys.setrecursionlimit(10000) # hack to avoid 'maximum recursion depth exceeded'
 
     def get_robots(self, url):
-        start_url_parse = urlparse(url)
-        robot_parser = robotparser.RobotFileParser()
-        robots_url = urljoin(start_url_parse.scheme + '://' + start_url_parse.netloc + '/', 'robots.txt')
-        print('robots.txt url is: {}'.format(robots_url))
-        robot_parser.set_url(robots_url)
-        robot_parser.read()
-        return robot_parser
+        if url is not None:
+            start_url_parse = urlparse(url)
+            robot_parser = robotparser.RobotFileParser()
+            robots_url = urljoin(start_url_parse.scheme + '://' + start_url_parse.netloc + '/', 'robots.txt')
+            robot_parser.set_url(robots_url)
+            robot_parser.read()
+            return robot_parser
 
     def download_url(self, url):
         sleep(0.02)
         if url is not None:
             url = self.clear_url(url)
             robot_parser = self.get_robots(url)
-            if robot_parser.can_fetch('*', url):
-                headers = {
-                    'User-Agent': 'SearchBotByMe v0.1.1',
-                }
-                r = requests.get(url, headers=headers)
-                if r.status_code != 200:
-                    print('{} status code was {}'.format(r.url, r.status_code))
-                return r.text
+            if robot_parser is not None:
+                if robot_parser.can_fetch('*', url):
+                    headers = {
+                        'User-Agent': 'SearchBotByMe v0.1.1',
+                    }
+                    r = requests.get(url, headers=headers)
+                    if r.status_code != 200:
+                        print('{} status code was {}'.format(r.url, r.status_code))
+                    return r.text
 
     @staticmethod
     def clear_url(url):
@@ -68,7 +69,7 @@ class Crawler:
 
     def prepare_soap(self, html):
         if html is not None:
-            bs = BeautifulSoup(html, 'lxml')
+            bs = BeautifulSoup(html, 'html.parser')
             return bs
 
     def soap_links(self, url, soup):
@@ -114,15 +115,17 @@ class Crawler:
 
     def process_url(self, url):
         if url is not None:
+            print('processing {}'.format(url))
             html = self.download_url(url)
             soup = self.prepare_soap(html)
-
             links = self.soap_links(url, soup)
 
             return [links, soup, url]
 
     def crawl(self):
-        links = self.process_url(self.start_url)[0]
+        first_page = self.process_url(self.start_url)
+        links = first_page[0]
+        self.index(self.start_url, first_page[1])
         self.processed_links.add(self.clear_url(self.start_url))
         links = links - self.processed_links
 
@@ -144,7 +147,7 @@ class Crawler:
 
             if pool_map is not None:
                 for i in pool_map:
-                    if i is not None and i[0] is not None:
+                    if i is not None and i[0] is not None and i[1] is not None and i[2] is not None:
                         self.index(i[2], i[1])
                         links = links | i[0]
 

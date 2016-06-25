@@ -29,33 +29,26 @@ def add(request):
     url = post_result.get('url')
     depth = post_result.get('depth')
     width = post_result.get('width')
-    urls = set()
+    workers = post_result.get('workers')
 
-    # print('{} is {}'.format(depth, type(depth)))
-    # print('{} is {}'.format(url, type(url)))
-    # print('{} is {}'.format(width, type(width)))
-
-    if depth is None:
+    if depth is None or depth == '':
         depth = 1
 
-    if width is None:
-        width = 2
+    if width is None or width == '':
+        width = 1
+
+    if workers is None or workers == '':
+        workers = 4
 
     if url is not None:
-        print('Start crawling!')
-
         depth = int(depth)
         width = int(width)
+        workers = int(workers)
 
-        print('{} is {}'.format(depth, type(depth)))
-        print('{} is {}'.format(url, type(url)))
-        print('{} is {}'.format(width, type(width)))
-
-        crawler = lab.Crawler.Crawler(url, depth=depth, width=width)
+        crawler = lab.Crawler.Crawler(url, depth=depth, width=width, workers=workers)
         print(crawler)
-        urls = crawler.crawl()
+        crawler.crawl()
 
     return render(request, 'add.html', {
         'url': url,
-        'urls': urls,
     })
